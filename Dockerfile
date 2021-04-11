@@ -3,7 +3,7 @@ FROM ubuntu:20.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update
-RUN apt-get install -y build-essential grub-efi-ia32-bin unzip curl wget
+RUN apt-get install -y build-essential grub-efi-arm64-bin unzip curl wget
 
 # needed for debuild
 RUN apt-get install -y devscripts
@@ -40,8 +40,12 @@ RUN git clone https://github.com/google/android-cuttlefish
 WORKDIR /root/android-cuttlefish
 RUN debuild -i -us -uc -b
 
+RUN apt-get install -y qemu-user-static binfmt-support
+
+RUN cd ../ && ls -al
+
 # install .deb packages
-RUN dpkg -i ../cuttlefish-common_*_amd64.deb
+RUN dpkg -i ../cuttlefish-common_*_arm64.deb
 RUN apt-get install -f
 
 # copy root filesystem
