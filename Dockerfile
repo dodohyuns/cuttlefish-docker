@@ -1,16 +1,9 @@
-FROM ubuntu:20.04 as ziphack
-WORKDIR /root
-RUN apt-get update
-RUN apt-get install unzip
-ADD aosp_cf_x86_64_phone-img-6999531.zip /root/aosp_cf_x86_64_phone-img.zip
-RUN unzip -q aosp_cf_x86_64_phone-img.zip -d aosp_cf_x86_64_phone-img
-
 FROM ubuntu:20.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update
-RUN apt-get install -y build-essential
+RUN apt-get install -y build-essential grub-efi-ia32-bin unzip curl wget
 
 # needed for debuild
 RUN apt-get install -y devscripts
@@ -28,6 +21,18 @@ RUN apt-get install -y rsyslog
 RUN groupadd cvdnetwork && groupadd kvm && usermod -aG cvdnetwork root && usermod -aG kvm root
 
 # clone cuttlefish
+WORKDIR /cf
+
+ARG URL=https://ci.android.com/builds/latest/branches/aosp-master-throttled/targets/aosp_cf_arm64_phone-userdebug/view/BUILD_INFO
+
+RUN RURL=$(curl -Ls -o /dev/null -w %{url_effective} ${URL}) \
+    && IMG=aosp_cf_arm64_phone-img-$(echo $RURL | awk -F\/ '{print $6}').zip \
+	&& wget -nv ${RURL%/view/BUILD_INFO}/raw/${IMG} \
+    && wget -nv ${RURL%/view/BUILD_INFO}/raw/cvd-host_package.tar.gz \
+	&& unzip $IMG -d aosp_cf_arm64_phone-img \
+	&& tar xvf cvd-host_package.tar.gz \
+	&& rm -v $IMG cvd-host_package.tar.gz
+
 WORKDIR /root
 RUN git clone https://github.com/google/android-cuttlefish
 
@@ -41,7 +46,5 @@ RUN apt-get install -f
 
 # copy root filesystem
 WORKDIR /root
-COPY --from=ziphack /root/aosp_cf_x86_64_phone-img/ cf/
-ADD cvd-host_package.tar.gz cf/
 
 CMD /bin/bash
