@@ -3,6 +3,20 @@ FROM ubuntu:20.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update
+RUN apt-get install -y --no-install-recommends qemu qemu-user binfmt-support qemu-user-static
+RUN dpkg --add-architecture amd64
+
+RUN gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv DAFCA20FBF428671 \
+    && gpg --export --armor DAFCA20FBF428671 | apt-key add -
+
+COPY sources.list /etc/apt/sources.list
+
+RUN apt-get update
+RUN apt-get install libc6:arm64
+RUN apt-get --fix-broken install
+RUN apt-get install libc6:amd64
+
+RUN apt-get update
 RUN apt-get install -y build-essential grub-efi-arm64-bin unzip curl wget
 
 # needed for debuild
@@ -39,10 +53,6 @@ RUN git clone https://github.com/google/android-cuttlefish
 # build .deb packages
 WORKDIR /root/android-cuttlefish
 RUN debuild -i -us -uc -b
-
-RUN apt-get install -y qemu-user-static binfmt-support
-
-RUN cd ../ && ls -al
 
 # install .deb packages
 RUN dpkg -i ../cuttlefish-common_*_arm64.deb
