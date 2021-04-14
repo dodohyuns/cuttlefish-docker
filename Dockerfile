@@ -1,22 +1,7 @@
-FROM ubuntu:20.04
+FROM arm64v8/ubuntu:18.04 
 
-ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update -y
 
-RUN apt-get update
-RUN apt-get install -y --no-install-recommends qemu qemu-user binfmt-support qemu-user-static
-RUN dpkg --add-architecture amd64
-
-RUN gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv DAFCA20FBF428671 \
-    && gpg --export --armor DAFCA20FBF428671 | apt-key add -
-
-COPY sources.list /etc/apt/sources.list
-
-RUN apt-get update
-RUN apt-get install libc6:arm64
-RUN apt-get --fix-broken install
-RUN apt-get install libc6:amd64
-
-RUN apt-get update
 RUN apt-get install -y build-essential grub-efi-arm64-bin unzip curl wget
 
 # needed for debuild
@@ -53,6 +38,27 @@ RUN git clone https://github.com/google/android-cuttlefish
 # build .deb packages
 WORKDIR /root/android-cuttlefish
 RUN debuild -i -us -uc -b
+
+RUN apt install -y gpg dirmngr qemu-user-static
+
+COPY sources.list /etc/apt/sources.list
+
+RUN gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv 3B4FE6ACC0B21F32 \
+    && gpg --export --armor 3B4FE6ACC0B21F32 | apt-key add - \
+    && gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv DAFCA20FBF428671 \
+    && gpg --export --armor DAFCA20FBF428671 | apt-key add -
+
+RUN dpkg --add-architecture amd64 \
+    && apt-get update -y
+
+RUN chown -Rv _apt:root /var/cache/apt/archives/partial/ \
+    && chmod -Rv 700 /var/cache/apt/archives/partial/
+
+RUN apt install --allow-downgrades -y libc6:arm64=2.27-3ubuntu1.2
+
+RUN apt-get download libc6:amd64=2.27-3ubuntu1.2 \
+    && dpkg -i --force-all libc6_2.27-3ubuntu1.2_amd64.deb \
+    && apt-get --fix-broken -y install
 
 # install .deb packages
 RUN dpkg -i ../cuttlefish-common_*_arm64.deb
