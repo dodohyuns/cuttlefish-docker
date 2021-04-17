@@ -44,11 +44,11 @@ ARG URL=https://ci.android.com/builds/latest/branches/aosp-master-throttled/targ
 
 RUN RURL=$(curl -Ls -o /dev/null -w %{url_effective} ${URL}) \
     && IMG=aosp_cf_arm64_phone-img-$(echo $RURL | awk -F\/ '{print $6}').zip \
-	&& wget -nv ${RURL%/view/BUILD_INFO}/raw/${IMG} \
+    && wget -nv ${RURL%/view/BUILD_INFO}/raw/${IMG} \
     && wget -nv ${RURL%/view/BUILD_INFO}/raw/cvd-host_package.tar.gz \
-	&& unzip $IMG \
-	&& tar xvf cvd-host_package.tar.gz \
-	&& rm -v $IMG cvd-host_package.tar.gz
+    && unzip $IMG \
+    && tar xvf cvd-host_package.tar.gz \
+    && rm -v $IMG cvd-host_package.tar.gz
 
 RUN apt-get install -y git
 
