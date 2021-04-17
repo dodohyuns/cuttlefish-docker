@@ -1,25 +1,43 @@
-FROM arm64v8/ubuntu:18.04 
+FROM arm64v8/debian:buster-slim
 
-RUN apt-get update -y
+ENV LC_ALL C
+ENV DEBIAN_FRONTEND noninteractive
 
-RUN apt-get install -y build-essential grub-efi-arm64-bin unzip curl wget
+RUN set -x
 
-# needed for debuild
-RUN apt-get install -y devscripts
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y systemd \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* \
+    && rm -f /var/run/nologin
 
-# build dependencies
-RUN apt-get install -y config-package-dev debhelper-compat
+RUN rm -f /lib/systemd/system/multi-user.target.wants/* \
+    /etc/systemd/system/*.wants/* \
+    /lib/systemd/system/local-fs.target.wants/* \
+    /lib/systemd/system/sockets.target.wants/*udev* \
+    /lib/systemd/system/sockets.target.wants/*initctl* \
+    /lib/systemd/system/sysinit.target.wants/systemd-tmpfiles-setup* \
+    /lib/systemd/system/systemd-update-utmp*
 
-# install dependencies
-RUN apt-get install -y bridge-utils dnsmasq-base f2fs-tools iptables libarchive-tools libdrm2 libfdt1 libgl1 libusb-1.0-0 libwayland-client0 libwayland-server0 net-tools python2.7
+VOLUME [ "/sys/fs/cgroup" ]
 
-# a syslog is required for crosvm to run
-RUN apt-get install -y rsyslog
+CMD ["/lib/systemd/systemd"]
 
-# user needs to be member of these groups
-RUN groupadd cvdnetwork && groupadd kvm && usermod -aG cvdnetwork root && usermod -aG kvm root
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y apt-utils sudo vim gawk coreutils \
+       openssh-server openssh-client psmisc iptables iproute2 dnsmasq \
+       net-tools rsyslog equivs equivs devscripts dpkg-dev dialog # qemu-system-x86
 
-# clone cuttlefish
+SHELL ["/bin/bash", "-c"]
+
+RUN dpkg --add-architecture amd64 \
+    && apt-get update \
+    && apt-get install --no-install-recommends -y libc6:amd64 \
+    && apt-get install --no-install-recommends -y qemu qemu-user qemu-user-static binfmt-support
+
+RUN apt-get install -y xterm
+RUN apt-get install -y curl wget unzip
+
 WORKDIR /cf
 
 ARG URL=https://ci.android.com/builds/latest/branches/aosp-master-throttled/targets/aosp_cf_arm64_phone-userdebug/view/BUILD_INFO
@@ -28,41 +46,25 @@ RUN RURL=$(curl -Ls -o /dev/null -w %{url_effective} ${URL}) \
     && IMG=aosp_cf_arm64_phone-img-$(echo $RURL | awk -F\/ '{print $6}').zip \
 	&& wget -nv ${RURL%/view/BUILD_INFO}/raw/${IMG} \
     && wget -nv ${RURL%/view/BUILD_INFO}/raw/cvd-host_package.tar.gz \
-	&& unzip $IMG -d aosp_cf_arm64_phone-img \
+	&& unzip $IMG \
 	&& tar xvf cvd-host_package.tar.gz \
 	&& rm -v $IMG cvd-host_package.tar.gz
+
+RUN apt-get install -y git
 
 WORKDIR /root
 RUN git clone https://github.com/google/android-cuttlefish
 
 # build .deb packages
 WORKDIR /root/android-cuttlefish
-RUN debuild -i -us -uc -b
+RUN yes | mk-build-deps -i -r -B
+RUN dpkg-buildpackage -uc -us
+RUN ls -al
 
-RUN apt install -y gpg dirmngr qemu-user-static
+RUN apt-get install --no-install-recommends -y -f ../cuttlefish-common_*.deb \
+    && rm -rvf ../cuttlefish-common_*.deb 
 
-COPY sources.list /etc/apt/sources.list
-
-RUN gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv 3B4FE6ACC0B21F32 \
-    && gpg --export --armor 3B4FE6ACC0B21F32 | apt-key add - \
-    && gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv DAFCA20FBF428671 \
-    && gpg --export --armor DAFCA20FBF428671 | apt-key add -
-
-RUN dpkg --add-architecture amd64 \
-    && apt-get update -y
-
-RUN chown -Rv _apt:root /var/cache/apt/archives/partial/ \
-    && chmod -Rv 700 /var/cache/apt/archives/partial/
-
-RUN apt install --allow-downgrades -y libc6:arm64=2.27-3ubuntu1.2
-
-RUN apt-get download libc6:amd64=2.27-3ubuntu1.2 \
-    && dpkg -i --force-all libc6_2.27-3ubuntu1.2_amd64.deb \
-    && apt-get --fix-broken -y install
-
-# install .deb packages
-RUN dpkg -i ../cuttlefish-common_*_arm64.deb
-RUN apt-get install -f
+RUN usermod -aG cvdnetwork root && usermod -aG kvm root
 
 # copy root filesystem
 WORKDIR /root
